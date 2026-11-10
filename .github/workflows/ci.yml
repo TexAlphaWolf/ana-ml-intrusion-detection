@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: mypy
+      - run: pytest -n auto --cov
+
+  windows:
+    name: test (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+      - run: pip install -e ".[dev]"
+      - run: pytest -n auto
+
+  macos:
+    name: test (macOS)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+      - run: pip install -e ".[dev]"
+      - run: pytest -n auto
+
+  demo:
+    # the whole benchmark on synthetic data: it proves that the software runs, never that a detector works
+    name: demo run
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - run: pip install -e .
+      - run: idsbench demo --rows 3000 --quick --out demo-out
+      - run: |
+          grep -q 'SYNTHETIC DATA' demo-out/evaluation.md
+          test -s demo-out/summary.png
+
+  docker:
+    name: docker image
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - run: docker build -t idsbench .
+      - name: synthetic datasets, check, benchmark, report (read-only, no capabilities, no network)
+        run: bash tools/docker_e2e.sh idsbench
+
+  docker-windows:
+    # the same flow driven from PowerShell, to keep that script honest (Linux container on the runner)
+    name: docker flow from PowerShell
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - run: docker build -t idsbench .
+      - name: PowerShell script
+        shell: pwsh
+        run: ./tools/docker_e2e.ps1 -Image idsbench
